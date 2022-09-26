@@ -1,3 +1,4 @@
+use borsh::BorshDeserialize;
 use solana_program::{
     entrypoint::{ProgramResult},
     pubkey::Pubkey,
@@ -13,7 +14,7 @@ pub fn process_instruction(
     accounts:&[AccountInfo],
     input:&[u8]
 ) -> ProgramResult {
-    let instruction = EscrowInstruction::unpack(input);
+    let instruction = EscrowInstruction::try_from_slice(input)?;
     match instruction {
         EscrowInstruction::Initialize { amount } =>{
             msg!("Instruction : Initialize the Escrow");
@@ -22,9 +23,9 @@ pub fn process_instruction(
             if !user_sender.is_signer {
                 return Err(ProgramError::MissingRequiredSignature);
             }
-            let senders_token_receiver_account = next_account_info(accounts_iter)?;
-            let escrow_token_account = next_account_info(accounts_iter)?;
-            if *senders_token_receiver_account.owner != spl_token::id() {
+            let senders_token_account = next_account_info(accounts_iter)?;
+            let escrow_token_account = next_account_info(accounts_iter)?; // senders temporary token account to transfer it's ownership to program and receive the trade of tokens
+            if *senders_token_account.owner != spl_token::id() {
                 return Err(ProgramError::IllegalOwner);
             }
             let escrow_wallet = next_account_info(accounts_iter)?;
@@ -32,7 +33,7 @@ pub fn process_instruction(
             if !rent.is_exempt(escrow_wallet.lamports(), escrow_wallet.data_len()) {
                 return Err(ProgramError::AccountNotRentExempt);
             }
-            let mut escrow_info = Escrow::unpack_unchecked(escrow_wallet.try_borrow_data()?)?;
+            let escrow_info = Escrow::try_from_slice(&escrow_wallet.data.borrow())?;
             let token_program = next_account_info(accounts_iter)?;
             if escrow_info.is_initialized {
                 return Err(EscrowError::EscrowAlreadyInitialized.into());

@@ -1,4 +1,10 @@
 
+use crate::error::{self, EscrowError};
+use solana_program::{
+    program_error::{ProgramError}, pubkey::Pubkey, sysvar::{rent, self}, instruction::{Instruction, AccountMeta}, stake::instruction, bpf_loader::id,
+};
+use borsh::{BorshDeserialize,BorshSerialize};
+#[derive(Debug,BorshDeserialize,BorshSerialize,Clone,PartialEq)]
 pub enum EscrowInstruction{
     /// Starts the trade by creating a escrow account owned by program and storing the amount of tokens that are getting exchanged
     /// accounts required :
@@ -6,26 +12,21 @@ pub enum EscrowInstruction{
     /// 1 - [writer] Token Account which will be sending Y tokens to escrow
     /// 2 - [] Account of user that will be receiving the Y tokens
     /// 3 - [writer] escrow account which will hold all info and tokens
-    /// 4 - [rent] rent sysvar
+    /// 4 - [] rent sysvar
     /// 5 - [] token program
     Initialize{
         amount : u64
     }
 }
 
-impl EscrowInstruction {
-   pub fn unpack(input:&[u8]) -> Result<self,ProgramError> {
-        let (tag,rest) = input.split_first().ok_or(InvalidInstruction);
-        Ok(match tag {
-            0 => self::Initialize{
-                amount : self::unpack_amount(rest)?,
-            },
-            _ => return Err(InvalidData)
-        })
-   }
-
-   pub fn unpack_amount(input:&[u8]) -> Result<u64,ProgramError> {
-        let amount = input.get(..8).and_then(|slice| slice.try_into().ok()).map(u64::from_le_bytes).ok_or(InvalidInstruction)?;
-        Ok(amount)
-   } 
+pub fn initialize(user_sender:&Pubkey,senders_token_account:&Pubkey,escrow_token_account:&Pubkey,escrow_account:&Pubkey,rent:&Pubkey,token_program:&Pubkey,amount:u64) -> Instruction {
+    Instruction::new_with_borsh(id(), &EscrowInstruction::Initialize { amount },
+     vec![
+        AccountMeta::new(*user_sender, true),
+        AccountMeta::new(*senders_token_account, false),
+        AccountMeta::new(*escrow_token_account, false),
+        AccountMeta::new(*escrow_account, false),
+        AccountMeta::new(*rent, false),
+        AccountMeta::new(*token_program, false),
+     ])
 }
