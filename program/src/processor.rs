@@ -1,4 +1,4 @@
-use borsh::BorshDeserialize;
+use borsh::{BorshSerialize,BorshDeserialize};
 use solana_program::{
     entrypoint::{ProgramResult},
     pubkey::Pubkey,
@@ -15,35 +15,52 @@ pub fn process_instruction(
     accounts:&[AccountInfo],
     input:&[u8]
 ) -> ProgramResult {
-    let instruction = EscrowInstruction::try_from_slice(input)?;
-    match instruction {
-        EscrowInstruction::Initialize { amount } =>{
+    msg!("program starts!");
+    let instruction = Payload::try_from_slice(input).map_err(|_| ProgramError::InvalidInstructionData)?;
+    msg!("deserialize instruction!");
+
+    match instruction.variant {
+        0 => {
             msg!("Instruction : Initialize the Escrow");
             let accounts_iter = &mut accounts.iter();
             let user_sender = next_account_info(accounts_iter)?;
+            msg!("check is sender a signer");
             if !user_sender.is_signer {
                 return Err(ProgramError::MissingRequiredSignature);
             }
             let senders_token_account = next_account_info(accounts_iter)?;
             let escrow_token_account = next_account_info(accounts_iter)?; // senders temporary token account to transfer it's ownership to program and receive the trade of tokens
+            msg!("check is senders token account owned by token program");
             if *senders_token_account.owner != spl_token::id() {
                 return Err(ProgramError::IllegalOwner);
             }
             let escrow_wallet = next_account_info(accounts_iter)?;
             let rent = &Rent::from_account_info(next_account_info(accounts_iter)?)?;
+            msg!("check is rent exempt on escrow wallet");
             if !rent.is_exempt(escrow_wallet.lamports(), escrow_wallet.data_len()) {
                 return Err(ProgramError::AccountNotRentExempt);
             }
-            let mut escrow_info = Escrow::try_from_slice(&escrow_wallet.data.borrow())?;
+            msg!("deserialize escrow account");
+            // let mut escrow_info = Escrow{
+            //     expected_amount: instruction.arg1,
+            //     user_sender:*user_sender.key,
+            //     is_initialized:true,
+            //     senders_token_receiver_account:*senders_token_account.key,
+            //     escrow_token_account:*escrow_token_account.key
+            // };
+            let mut escrow_info = Escrow::try_from_slice(*escrow_wallet.try_borrow_data()?)?;
             let token_program = next_account_info(accounts_iter)?;
+            msg!("check is escrow initialized !");
             if escrow_info.is_initialized {
                 return Err(EscrowError::EscrowAlreadyInitialized.into());
             }
             escrow_info.user_sender = *user_sender.key;
             escrow_info.is_initialized = true;
-            escrow_info.expected_amount = amount;
+            escrow_info.expected_amount = instruction.arg1;
             escrow_info.escrow_token_account = *escrow_token_account.key;
             escrow_info.senders_token_receiver_account = *senders_token_account.key;
+            msg!("serializing the escrow account !");
+            escrow_info.serialize(&mut &mut escrow_wallet.data.borrow_mut()[..])?;
             // creating pda for escrow token account
             let (pda,_bump) = Pubkey::find_program_address(&[b"token"], &id());
             // transferring ownership of pda to program from sender to use this account as an escrow for sending Y tokens to Bob
@@ -57,6 +74,7 @@ pub fn process_instruction(
             )?;
             
             Ok(())
-        }
+        },
+        _ => return (Err(ProgramError::InvalidArgument))
     }
 }

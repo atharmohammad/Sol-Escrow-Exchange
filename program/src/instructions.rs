@@ -1,9 +1,14 @@
-
+use crate::id;
 use crate::error::{self, EscrowError};
 use solana_program::{
-    program_error::{ProgramError}, pubkey::Pubkey, sysvar::{rent, self}, instruction::{Instruction, AccountMeta}, stake::instruction, bpf_loader::id,
+    program_error::{ProgramError}, pubkey::Pubkey, sysvar::{rent, self}, instruction::{Instruction, AccountMeta},
 };
 use borsh::{BorshDeserialize,BorshSerialize};
+#[derive(Debug,BorshDeserialize,BorshSerialize,Clone,PartialEq)]
+pub struct Payload {
+    pub variant : u8,
+    pub arg1 : u64
+}
 #[derive(Debug,BorshDeserialize,BorshSerialize,Clone,PartialEq)]
 pub enum EscrowInstruction{
     /// Starts the trade by creating a escrow account owned by program and storing the amount of tokens that are getting exchanged

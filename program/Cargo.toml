@@ -7,6 +7,9 @@ edition = "2021"
 solana-program = "1.10.26"
 thiserror = "1.0.24"
 borsh = "0.9.1"
+borsh-derive = "0.9.0"
+num-derive = "0.3"
+num-traits = "0.2"
 spl-token = { version="3.3.0", features = [ "no-entrypoint" ] }
 spl-associated-token-account = { version="1.0.5", features = [ "no-entrypoint" ] }
 
