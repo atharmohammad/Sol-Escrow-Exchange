@@ -141,9 +141,9 @@ const main = async()=>{
     const escrow_wallet = Keypair.generate();
     const create_escrow_wallet_tx = SystemProgram.createAccount(
     {
-        space: ESCROW_WALLET_LAYOUT.span,
+        space: 32+1+32+32+8,
         lamports: await connection.getMinimumBalanceForRentExemption(
-            ESCROW_WALLET_LAYOUT.span
+            32+1+32+32+8
         ),
         fromPubkey: alice.publicKey,
         newAccountPubkey: escrow_wallet.publicKey,
