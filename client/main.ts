@@ -26,6 +26,19 @@ class Payload extends Struct {
     }
   }
   
+// class Escrow extends Struct {
+//     sendersTokenReceiverAccount : PublicKey
+//     isInitialized : number
+//     escrowTokenAccount : PublicKey
+//     expectedAmount : bigint
+//     constructor(fields: {name: string, counter: number} | undefined = undefined) {
+//       if (fields) {
+//         this.name = fields.name;
+//         this.counter = fields.counter;
+//       }
+//     }
+//   }
+  
 // Path to local Solana CLI config file.
 const CONFIG_FILE_PATH = path.resolve(
     os.homedir(),
@@ -58,17 +71,19 @@ const createKeypairFromFile = async(path:string): Promise<Keypair> => {
     pub expected_amount : u64 */
 
 interface escrowWalletData {
+    userSender: PublicKey;
     isInitialized : number;
     escrowTokenAccount : PublicKey;
-    sendersTokenReceiver : PublicKey;
-    amount : bigint;
+    sendersTokenReceiverAccount : PublicKey;
+    expectedAmount : bigint;
 } 
 
 const ESCROW_WALLET_LAYOUT = struct<escrowWalletData>([
+    publicKey("userSender"),
     u8("isInitialized"),
     publicKey("escrowTokenAccount"),
     publicKey("sendersTokenReceiverAccount"),
-    u64("amount"),
+    u64("expectedAmount"),
 ])
 
 
@@ -84,7 +99,7 @@ const main = async()=>{
     let escrow_token_account : Keypair , token_account : Keypair;
     const value = new Payload({
         id:0,
-        amount: BigInt(5)
+        amount: 5
       });
     
     const schema = new Map([
@@ -152,8 +167,8 @@ const main = async()=>{
     const transactionInstruction = new TransactionInstruction({
         keys:[
             {pubkey:alice.publicKey,isSigner:true,isWritable:true},
-            {pubkey:token_account.publicKey,isSigner:false,isWritable:true},
-            {pubkey:escrow_token_account.publicKey,isSigner:false,isWritable:false},
+            {pubkey:token_account.publicKey,isSigner:false,isWritable:false},
+            {pubkey:escrow_token_account.publicKey,isSigner:false,isWritable:true},
             {pubkey:escrow_wallet.publicKey,isSigner:false,isWritable:true},
             {pubkey:SYSVAR_RENT_PUBKEY,isSigner:false,isWritable:false},
             {pubkey:TOKEN_PROGRAM_ID,isSigner:false,isWritable:false},
@@ -162,9 +177,26 @@ const main = async()=>{
         data:Buffer.from(serialize(schema, value))
     })
     tx.add(create_escrow_wallet_tx,transactionInstruction);
-    const des = deserializeUnchecked(schema, Payload, Buffer.from(serialize(schema, value)));
-    console.log(des)
     await sendAndConfirmTransaction(connection,tx,[alice,escrow_wallet]);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const escrowAccount = await connection.getAccountInfo(
+        escrow_wallet.publicKey
+    );
+
+    if (escrowAccount === null || escrowAccount.data.length === 0) {
+        console.log("Escrow state account has not been initialized properly");
+        process.exit(1);
+    }
+    console.log("///////// sent ///////////");
+    console.log("token account : ",token_account.publicKey.toString());
+    console.log("escrow token account : ",escrow_token_account.publicKey.toString());
+    console.log("sender account : ",alice.publicKey.toString());
+    const data = ESCROW_WALLET_LAYOUT.decode(escrowAccount.data);
+    console.log("/////// received //////");
+    console.log("token account : ",data.sendersTokenReceiverAccount.toString())
+    console.log("escrow token account : ",data.escrowTokenAccount.toString())
+    console.log("sender account :" , data.userSender.toString())
 }
 
 main().then(

@@ -1,24 +1,31 @@
-use borsh::{BorshSerialize,BorshDeserialize,BorshSchema};
-use solana_program::{
-    entrypoint::{ProgramResult},
-    pubkey::Pubkey,
-    account_info::{AccountInfo,next_account_info},
-    msg,
-    program_error::ProgramError, rent::Rent, sysvar::Sysvar, bpf_loader::id, program::invoke,
-    borsh::try_from_slice_unchecked,
-    program_pack::Pack,
-};
-use spl_token::instruction::set_authority;
-use crate::{instructions::*, error::EscrowError};
 use crate::state::*;
+use crate::{error::EscrowError, instructions::*};
+use borsh::{BorshDeserialize, BorshSerialize};
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    bpf_loader::id,
+    entrypoint::ProgramResult,
+    msg,
+    program::{invoke, invoke_signed},
+    program_error::ProgramError,
+    program_pack::Pack,
+    pubkey::Pubkey,
+    rent::Rent,
+    sysvar::Sysvar,
+};
+use spl_token::{
+    instruction::{set_authority, transfer},
+    state::Account,
+};
 
 pub fn process_instruction(
-    _program_id:&Pubkey,
-    accounts:&[AccountInfo],
-    input:&[u8]
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    input: &[u8],
 ) -> ProgramResult {
     msg!("program starts!");
-    let instruction = Payload::try_from_slice(input).map_err(|_| ProgramError::InvalidInstructionData)?;
+    let instruction =
+        Payload::try_from_slice(input).map_err(|_| ProgramError::InvalidInstructionData)?;
     msg!("deserialize instruction!");
 
     match instruction.variant {
@@ -30,9 +37,9 @@ pub fn process_instruction(
             if !user_sender.is_signer {
                 return Err(ProgramError::MissingRequiredSignature);
             }
-            let escrow_token_account = next_account_info(accounts_iter)?; // senders temporary token account to transfer it's ownership to program and receive the trade of tokens
             let senders_token_account = next_account_info(accounts_iter)?;
-            
+            let escrow_token_account = next_account_info(accounts_iter)?; // senders temporary token account to transfer it's ownership to program and receive the trade of tokens
+
             msg!("check is senders token account owned by token program");
             if *senders_token_account.owner != spl_token::id() {
                 return Err(ProgramError::IllegalOwner);
@@ -59,19 +66,82 @@ pub fn process_instruction(
             escrow_info.serialize(&mut &mut escrow_wallet.data.borrow_mut()[..])?;
             msg!("creating pda for escrow token account !");
 
-            let (pda,_bump) = Pubkey::find_program_address(&[b"token"], &id());
+            let (pda, _bump) = Pubkey::find_program_address(&[b"token"], &id());
             msg!("transferring ownership of pda to program from sender to use this account as an escrow for sending Y tokens to Bob !");
-            let ownership_inst = set_authority(&token_program.key, &escrow_token_account.key, Some(&pda), spl_token::instruction::AuthorityType::AccountOwner, &user_sender.key, &[&user_sender.key])?;
-            invoke(&ownership_inst, 
+            let ownership_inst = set_authority(
+                &token_program.key,
+                &escrow_token_account.key,
+                Some(&pda),
+                spl_token::instruction::AuthorityType::AccountOwner,
+                &user_sender.key,
+                &[&user_sender.key],
+            )?;
+            invoke(
+                &ownership_inst,
                 &[
                     token_program.clone(),
                     escrow_token_account.clone(),
                     user_sender.clone(),
-                ]
+                ],
             )?;
-            
+
             Ok(())
-        },
-        _ => return (Err(ProgramError::InvalidArgument))
+        }
+        1 => {
+            msg!("Instruction : Compelete the escrow payment !");
+            let account_iter = &mut accounts.iter();
+            let user_receiver = next_account_info(account_iter)?;
+            msg!("recevier is a signer to compelete the escrow trade !");
+            if !user_receiver.is_signer {
+                return Err(ProgramError::MissingRequiredSignature);
+            }
+            let token_account = next_account_info(account_iter)?;
+            msg!("is token account owned by spl token program !");
+            if *token_account.owner != spl_token::id() {
+                return Err(ProgramError::IllegalOwner);
+            }
+            let receving_token_account = next_account_info(account_iter)?;
+            msg!("is receiver token account owned by spl token program !");
+            if *receving_token_account.owner != spl_token::id() {
+                return Err(ProgramError::IllegalOwner);
+            }
+            let token_program = next_account_info(account_iter)?;
+            let (pda, _bump) = Pubkey::find_program_address(&[b"token"], &id());
+            let escrow_wallet = next_account_info(account_iter)?;
+            msg!("Deserailize the escrow wallet state !");
+            let escrow_info = Escrow::unpack_unchecked(&escrow_wallet.try_borrow_data()?)?;
+            let token_program = next_account_info(account_iter)?;
+            let token_pda = next_account_info(account_iter)?;
+            let escrow_token_account = next_account_info(account_iter)?;
+            if *escrow_token_account.key != escrow_info.escrow_token_account {
+                return Err(ProgramError::IncorrectProgramId);
+            }
+            // transfer token from bob to alice token receiver account
+
+            msg!("transfer token from escrow to alice");
+            let transfer_to_alice = transfer(
+                &token_program.key,
+                &escrow_info.escrow_token_account,
+                &receving_token_account.key,
+                &pda,
+                &[&pda],
+                instruction.arg1,
+            )?;
+            invoke_signed(
+                &transfer_to_alice,
+                &[
+                    token_program.clone(),
+                    token_pda.clone(),
+                    receving_token_account.clone(),
+                    escrow_token_account.clone(),
+                ],
+                &[&[&b"token"[..], &[_bump]]],
+            )?;
+
+            // close the accounts
+
+            Ok(())
+        }
+        _ => return (Err(ProgramError::InvalidArgument)),
     }
 }
