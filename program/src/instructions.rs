@@ -25,10 +25,15 @@ pub enum EscrowInstruction {
     Initialize { amount: u64 },
     /// Compelete the trade by exchanging the token with escrow account
     /// accounts required :
-    /// 0 - [signer] Account which is compeleting the escrow trade
-    /// 1 - [writer] Token Account which will be sending Y tokens to alice
-    /// 2 - [] Account of user that will be receiving the Y tokens
-    /// 3 - [] token program
+    /// 0 - [signer] account which is compeleting the escrow trade
+    /// 1 - [writer] token Account which will be sending Y tokens to alice
+    /// 2 - [] account of user that will be receiving the Y tokens
+    /// 3 - [] escrow account which will hold all info and tokens
+    /// 4 - [] token program
+    /// 5 - [] PDA account which has authority of escrow token account holding tokens sent by alice
+    /// 6 - [] escrow token account which is holding alice's token
+    /// 7 - [] alice's token account which will receive the token by bob
+    /// 8 - [] alice's account
     Compelete { amount: u64 },
 }
 
