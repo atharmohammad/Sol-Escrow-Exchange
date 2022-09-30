@@ -1,6 +1,6 @@
+use crate::id;
 use crate::state::*;
 use crate::{error::EscrowError, instructions::*};
-use crate::id;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -111,7 +111,7 @@ pub fn process_instruction(
             let token_pda = next_account_info(account_iter)?; // pda account for cpi calls
             msg!("check is pda account passed is same as defined while initializing the escrow");
             if *token_pda.key != pda {
-                msg!("{} {}",*token_pda.key,pda);
+                msg!("{} {}", *token_pda.key, pda);
                 return Err(ProgramError::IncorrectProgramId);
             }
             let escrow_token_account = next_account_info(account_iter)?;
