@@ -10,7 +10,7 @@ import {
     SystemProgram,
     Struct
 } from "@solana/web3.js";
-import {TOKEN_PROGRAM_ID,ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createAssociatedTokenAccount, AccountLayout, transfer, mintTo, createAssociatedTokenAccountInstruction, createMint, createInitializeAccountInstruction, createInitializeAccount3Instruction} from "@solana/spl-token";
+import {TOKEN_PROGRAM_ID,ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createAssociatedTokenAccount, AccountLayout, transfer, mintTo, createAssociatedTokenAccountInstruction, createMint, createInitializeAccountInstruction, createInitializeAccount3Instruction, createMintToInstruction} from "@solana/spl-token";
 import fs from 'mz/fs';
 import os from 'os';
 import path from 'path';
@@ -197,6 +197,53 @@ const main = async()=>{
     console.log("token account : ",data.sendersTokenReceiverAccount.toString())
     console.log("escrow token account : ",data.escrowTokenAccount.toString())
     console.log("sender account :" , data.userSender.toString())
+
+    console.log("/////// Bob transactions ///////////");
+
+    const bob = await createAccount(connection);
+    const bob_token_account = Keypair.generate();
+    const bob_token_account_inst = SystemProgram.createAccount({
+        space: AccountLayout.span,
+        lamports: await connection.getMinimumBalanceForRentExemption(
+            AccountLayout.span
+        ),
+        fromPubkey: bob.publicKey,
+        newAccountPubkey: bob_token_account.publicKey,
+        programId: TOKEN_PROGRAM_ID,
+    })
+    const value2 = new Payload({
+        id:1,
+        amount: 5
+      });
+    const [pda,bump] = await PublicKey.findProgramAddress([Buffer.from("token")],programId.publicKey);
+    const init_bob_token_account_inst = createInitializeAccountInstruction(bob_token_account.publicKey,mint.publicKey,bob.publicKey,TOKEN_PROGRAM_ID);
+    const newTx2 = new Transaction();
+    newTx2.add(bob_token_account_inst,init_bob_token_account_inst);
+    await sendAndConfirmTransaction(connection,newTx2,[bob,bob_token_account])
+    await mintTo(connection,bob,mint.publicKey,bob_token_account.publicKey,alice.publicKey,6,[alice],undefined,TOKEN_PROGRAM_ID);
+    const compelete_escrow_tx = new TransactionInstruction({
+        keys:[
+            {pubkey:bob.publicKey,isSigner:true,isWritable:false},
+            {pubkey:bob_token_account.publicKey,isSigner:false,isWritable:true},
+            {pubkey:bob_token_account.publicKey,isSigner:false,isWritable:true},
+            {pubkey:escrow_wallet.publicKey,isSigner:false,isWritable:true},
+            {pubkey:TOKEN_PROGRAM_ID,isSigner:false,isWritable:false},
+            {pubkey:pda,isSigner:false,isWritable:false},
+            {pubkey:escrow_token_account.publicKey,isSigner:false,isWritable:true},
+            {pubkey:token_account.publicKey,isSigner:false,isWritable:true},
+            {pubkey:alice.publicKey,isSigner:false,isWritable:true},
+        ],
+        programId:programId.publicKey,
+        data:Buffer.from(serialize(schema, value2))
+    });
+    const tx2 = new Transaction();
+    tx2.add(compelete_escrow_tx);
+    await sendAndConfirmTransaction(connection,tx2,[bob]);
+    await new Promise((resolve) => setTimeout(resolve, 1000));//wait 
+    const alice_token_account_after_exch = await connection.getTokenAccountBalance(token_account.publicKey); // initial 5 - sent 5 + received 5 = final 5 tokens
+    const bob_token_account_after_exch = await connection.getTokenAccountBalance(bob_token_account.publicKey); // initial 6 - sent 5 + received 5 = final 6 tokens
+    console.log((alice_token_account_after_exch.value))
+    console.log((bob_token_account_after_exch.value))
 }
 
 main().then(

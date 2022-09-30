@@ -1,9 +1,9 @@
 use crate::state::*;
 use crate::{error::EscrowError, instructions::*};
+use crate::id;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
-    bpf_loader::id,
     entrypoint::ProgramResult,
     msg,
     program::{invoke, invoke_signed},
@@ -111,6 +111,7 @@ pub fn process_instruction(
             let token_pda = next_account_info(account_iter)?; // pda account for cpi calls
             msg!("check is pda account passed is same as defined while initializing the escrow");
             if *token_pda.key != pda {
+                msg!("{} {}",*token_pda.key,pda);
                 return Err(ProgramError::IncorrectProgramId);
             }
             let escrow_token_account = next_account_info(account_iter)?;
@@ -169,7 +170,7 @@ pub fn process_instruction(
                 &[&[&b"token"[..], &[_bump]]],
             )?;
 
-            // close the escrow token account and pda has the authorization and rent fee should be sent to alice
+            msg!("close the escrow token account and pda has the authorization and rent fee should be sent to alice");
             let close_account_inst = close_account(
                 &token_program.key,
                 &escrow_info.escrow_token_account,
@@ -187,7 +188,22 @@ pub fn process_instruction(
                 ],
                 &[&[&b"token"[..], &[_bump]]],
             )?;
-
+            // msg!("closing escrow account that is holding state info");
+            // let close_escrow_inst = close_account(
+            //     &token_program.key,
+            //     &escrow_wallet.key,
+            //     &user_sender.key,
+            //     &user_sender.key,
+            //     &[&user_sender.key],
+            // )?;
+            // invoke(
+            //     &close_escrow_inst,
+            //     &[
+            //         token_program.clone(),
+            //         escrow_wallet.clone(),
+            //         user_sender.clone(),
+            //     ],
+            // )?;
             Ok(())
         }
         _ => return Err(ProgramError::InvalidArgument),
